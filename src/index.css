@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+@theme {
+  /* Brand palette */
+  --color-brand-50: #e8f5ee;
+  --color-brand-100: #c6e8d5;
+  --color-brand-200: #9dd6b8;
+  --color-brand-300: #6dc49a;
+  --color-brand-400: #40b37d;
+  --color-brand-500: #058C5A;
+  --color-brand-600: #04774c;
+  --color-brand-700: #036040;
+  --color-brand-800: #024a31;
+  --color-brand-900: #013322;
+
+  /* Typography */
+  --font-sans: 'Inter', system-ui, sans-serif;
+
+  /* Custom shadows */
+  --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.05);
+  --shadow-brand: 0 8px 24px rgba(5, 140, 90, 0.25);
+}
+
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html, body, #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: #111827;
+    color: var(--color-gray-900);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Prevent tap highlight on mobile */
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    background-color: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Safe area padding for notched phones */
+  .pb-safe {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
