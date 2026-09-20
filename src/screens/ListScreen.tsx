@@ -55,7 +55,7 @@ const STATIONS = [
 
 const FILTERS = ['Gasolina', 'Etanol', 'Diesel'];
 
-export function ListScreen({ navigateTo, onSelectStation }: ListScreenProps) {
+export function ListScreen({ onSelectStation }: ListScreenProps) {
   const [activeFilter, setActiveFilter] = useState('Gasolina');
   const [reportStation, setReportStation] = useState<Station | null>(null);
 
@@ -73,8 +73,8 @@ export function ListScreen({ navigateTo, onSelectStation }: ListScreenProps) {
             onClick={() => setActiveFilter(filter)}
             className={cn(
               "px-5 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap",
-              activeFilter === filter 
-                ? "bg-brand-500 text-white shadow-md shadow-brand-500/20" 
+              activeFilter === filter
+                ? "bg-brand-500 text-white shadow-md shadow-brand-500/20"
                 : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
             )}
           >

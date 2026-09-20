@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "73c967a6-3765-493e-8832-3a24344629c0"
+      }
+    },
+    "android": {
+      "package": "com.leobarros.app"
+    }
+  }
+}

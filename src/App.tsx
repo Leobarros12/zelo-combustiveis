@@ -41,28 +41,28 @@ function App() {
       case 'login':
         return <LoginScreen navigateTo={navigateTo} setCurrentUser={setCurrentUser} key="login" />;
       case 'register':
-        return <RegisterScreen navigateTo={navigateTo} setCurrentUser={setCurrentUser} key="register" />;
+        return <RegisterScreen onNavigate={navigateTo} onLogin={(user) => setCurrentUser(user)} key="register" />;
       case 'home':
         return (
           <MainLayout currentScreen={currentScreen} navigateTo={navigateTo} key="main">
-            <ListScreen 
-              navigateTo={navigateTo} 
+            <ListScreen
+              navigateTo={navigateTo}
               onSelectStation={(station) => {
                 setSelectedStation(station);
                 navigateTo('map');
-              }} 
+              }}
             />
           </MainLayout>
         );
       case 'favorites':
         return (
           <MainLayout currentScreen={currentScreen} navigateTo={navigateTo} key="favorites">
-            <ListScreen 
-              navigateTo={navigateTo} 
+            <ListScreen
+              navigateTo={navigateTo}
               onSelectStation={(station) => {
                 setSelectedStation(station);
                 navigateTo('map');
-              }} 
+              }}
             />
           </MainLayout>
         );
