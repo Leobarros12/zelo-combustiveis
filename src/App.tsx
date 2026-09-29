@@ -86,9 +86,9 @@ function App() {
   };
 
   return (
-    <div className="bg-gray-900 min-h-screen w-full flex items-center justify-center font-sans antialiased">
-      {/* Viewport Simulator */}
-      <div className="w-full max-w-[412px] h-[100dvh] max-h-[846px] bg-gray-50 relative md:rounded-[40px] md:shadow-2xl overflow-hidden flex flex-col">
+    <div className="bg-gray-900 min-h-screen w-full flex items-center justify-center font-sans antialiased selection:bg-brand-500 selection:text-white">
+      {/* Mobile Responsive Container */}
+      <div className="w-full max-w-md min-h-screen h-[100dvh] bg-gray-50 relative md:rounded-[36px] md:shadow-2xl md:border md:border-gray-800/20 overflow-hidden flex flex-col">
         <AnimatePresence mode="wait">
           {renderScreen()}
         </AnimatePresence>

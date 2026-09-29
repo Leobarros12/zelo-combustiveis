@@ -19,7 +19,7 @@ export function MainLayout({ children, currentScreen, navigateTo }: MainLayoutPr
       className="flex flex-col h-full w-full"
     >
       <TopHeader />
-      <main className="flex-1 overflow-y-auto pb-24 no-scrollbar relative">
+      <main className="flex-1 overflow-y-auto pb-28 no-scrollbar relative">
         {children}
       </main>
       <BottomNav currentScreen={currentScreen} navigateTo={navigateTo} />

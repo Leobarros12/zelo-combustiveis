@@ -68,7 +68,7 @@ export function ListScreen({ onSelectStation }: ListScreenProps) {
   const [reportStation, setReportStation] = useState<Station | null>(null);
 
   return (
-    <div className="p-6 pb-24">
+    <div className="p-6 pb-28">
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900 mb-1 tracking-tight">Economize no combustível</h2>
         <p className="text-gray-500 text-sm">Compare preços em tempo real na sua região</p>
@@ -99,7 +99,11 @@ export function ListScreen({ onSelectStation }: ListScreenProps) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
           >
-            <Card hoverable className="p-4 flex flex-col gap-3">
+            <Card 
+              hoverable 
+              onClick={() => onSelectStation(station)}
+              className="p-4 flex flex-col gap-3 cursor-pointer active:scale-[0.99] transition-all hover:border-brand-300"
+            >
               <div className="flex justify-between items-start">
                 <div className="flex gap-3">
                   <div className={cn("w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm", station.logoBg)}>
@@ -133,15 +137,21 @@ export function ListScreen({ onSelectStation }: ListScreenProps) {
                 <div className="flex items-center gap-2">
                   {/* Confirm/Report price button */}
                   <button
-                    onClick={() => setReportStation(station)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setReportStation(station);
+                    }}
                     className="flex items-center gap-1 text-gray-400 hover:text-amber-500 active:scale-95 transition-all text-xs border border-gray-200 hover:border-amber-300 rounded-full px-2.5 py-1.5"
                   >
                     <MessageSquare size={13} />
                     <span>Preço</span>
                   </button>
                   <button
-                    onClick={() => onSelectStation(station)}
-                    className="bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold px-4 py-2 rounded-full transition-colors active:scale-95"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectStation(station);
+                    }}
+                    className="bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold px-4 py-2 rounded-full transition-colors active:scale-95 shadow-xs"
                   >
                     Ir agora &gt;
                   </button>
