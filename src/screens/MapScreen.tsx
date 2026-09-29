@@ -15,7 +15,13 @@ import {
   Fuel,
   ArrowRight,
   TrendingDown,
-  Car
+  CornerUpRight,
+  CornerUpLeft,
+  ArrowUp,
+  Volume2,
+  VolumeX,
+  ShieldCheck,
+  StopCircle
 } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet-routing-machine';
@@ -41,6 +47,12 @@ interface RouteInfo {
   durationText: string;
   totalDistanceMeters: number;
   totalDurationSeconds: number;
+  instructions?: Array<{
+    text: string;
+    distance: number;
+    time: number;
+    type?: string;
+  }>;
 }
 
 interface DestinationCity {
@@ -105,7 +117,6 @@ const LOCAL_STATIONS: Station[] = [
 
 // Highway & Interstate Stations (Rotas Rodoviárias)
 const HIGHWAY_STATIONS: Station[] = [
-  // Corredor Salvador -> Aracaju (Linha Verde BA-099 & BR-101 Norte)
   {
     id: 101,
     name: 'Posto Ipiranga Litoral Norte',
@@ -145,7 +156,7 @@ const HIGHWAY_STATIONS: Station[] = [
   {
     id: 104,
     name: 'Posto BR Parada Obrigatória - Conde',
-    price: 4.89, // ⭐ Mais barato da rota Salvador -> Aracaju
+    price: 4.89,
     distance: '168 km de Salvador',
     address: 'Linha Verde BA-099 Km 154 - Conde - BA',
     updated: 'Atualizado há 8 min',
@@ -178,8 +189,6 @@ const HIGHWAY_STATIONS: Station[] = [
     lat: -10.9472,
     lng: -37.0731
   },
-
-  // Corredor Salvador -> Feira de Santana (BR-324)
   {
     id: 107,
     name: 'Posto São Gonçalo BR-324',
@@ -195,7 +204,7 @@ const HIGHWAY_STATIONS: Station[] = [
   {
     id: 108,
     name: 'Posto Graal Feira de Santana',
-    price: 4.95, // ⭐ Mais barato da rota BR-324
+    price: 4.95,
     distance: '108 km de Salvador',
     address: 'BR-324 Km 518 - Feira de Santana - BA',
     updated: 'Atualizado há 18 min',
@@ -204,8 +213,6 @@ const HIGHWAY_STATIONS: Station[] = [
     lat: -12.2660,
     lng: -38.9660
   },
-
-  // Corredor Salvador -> Ilhéus / Sul da Bahia (BR-101 / BA-001)
   {
     id: 109,
     name: 'Posto Ipiranga Gandu BR-101',
@@ -244,9 +251,29 @@ const POPULAR_DESTINATIONS: DestinationCity[] = [
 // Default Salvador location (Pituba)
 const DEFAULT_USER_LOCATION: [number, number] = [-12.9922, -38.4685];
 
+// Calculate bearing between two coordinates
+function calculateBearing(startLat: number, startLng: number, destLat: number, destLng: number): number {
+  const startLatRad = (startLat * Math.PI) / 180;
+  const startLngRad = (startLng * Math.PI) / 180;
+  const destLatRad = (destLat * Math.PI) / 180;
+  const destLngRad = (destLng * Math.PI) / 180;
+
+  const y = Math.sin(destLngRad - startLngRad) * Math.cos(destLatRad);
+  const x =
+    Math.cos(startLatRad) * Math.sin(destLatRad) -
+    Math.sin(startLatRad) * Math.cos(destLatRad) * Math.cos(destLngRad - startLngRad);
+  const brng = (Math.atan2(y, x) * 180) / Math.PI;
+  return (brng + 360) % 360;
+}
+
 export function MapScreen({ station: initialStation }: MapScreenProps) {
   // Mode state: 'local' (postos na cidade) vs 'travel' (Modo Viagem Interestadual)
   const [activeMode, setActiveMode] = useState<'local' | 'travel'>('local');
+
+  // Active Guided Navigation Mode (GPS Turn-by-Turn estilo Waze)
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [carHeading, setCarHeading] = useState<number>(0);
+  const [voiceAlerts, setVoiceAlerts] = useState(true);
 
   const [selectedStation, setSelectedStation] = useState<Station>(() => {
     return initialStation || LOCAL_STATIONS[0];
@@ -256,7 +283,6 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
-  const [isNavigating, setIsNavigating] = useState(false);
 
   // Travel Mode Search States
   const [searchDestinationQuery, setSearchDestinationQuery] = useState('');
@@ -270,6 +296,8 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const userMarkerRef = useRef<L.Marker | null>(null);
   const destinationMarkerRef = useRef<L.Marker | null>(null);
+  const watchIdRef = useRef<number | null>(null);
+  const prevCoordsRef = useRef<[number, number] | null>(null);
 
   // Sync selectedStation if initialStation prop updates
   useEffect(() => {
@@ -279,26 +307,73 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
     }
   }, [initialStation]);
 
-  // 1. Get user geolocation
+  // 1. Setup Geolocation Tracking with watchPosition when Navigating
   useEffect(() => {
     if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const coords: [number, number] = [position.coords.latitude, position.coords.longitude];
-          setUserLocation(coords);
-          if (userMarkerRef.current) {
-            userMarkerRef.current.setLatLng(coords);
-          }
-        },
-        (error) => {
-          console.log('Using default geolocation due to:', error.message);
-        },
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
-    }
-  }, []);
+      if (isNavigating) {
+        // High accuracy GPS Watcher
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          (position) => {
+            const newCoords: [number, number] = [position.coords.latitude, position.coords.longitude];
+            
+            // Calculate dynamic heading if not provided by device sensor
+            let heading = position.coords.heading;
+            if (heading === null || isNaN(heading)) {
+              if (prevCoordsRef.current) {
+                heading = calculateBearing(
+                  prevCoordsRef.current[0],
+                  prevCoordsRef.current[1],
+                  newCoords[0],
+                  newCoords[1]
+                );
+              } else {
+                heading = 0;
+              }
+            }
 
-  // 2. Determine which stations to show based on active mode
+            prevCoordsRef.current = newCoords;
+            setUserLocation(newCoords);
+            if (heading !== null && !isNaN(heading)) {
+              setCarHeading(heading);
+            }
+
+            // Smoothly pan map to follow vehicle in navigation mode
+            if (mapInstanceRef.current) {
+              mapInstanceRef.current.panTo(newCoords, { animate: true, duration: 0.8 });
+            }
+          },
+          (error) => {
+            console.log('GPS watchPosition error:', error.message);
+          },
+          { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
+        );
+      } else {
+        // Single shot position when not actively navigating
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const coords: [number, number] = [position.coords.latitude, position.coords.longitude];
+            setUserLocation(coords);
+            if (userMarkerRef.current) {
+              userMarkerRef.current.setLatLng(coords);
+            }
+          },
+          (error) => {
+            console.log('Using default geolocation due to:', error.message);
+          },
+          { enableHighAccuracy: true, timeout: 8000 }
+        );
+      }
+    }
+
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    };
+  }, [isNavigating]);
+
+  // 2. Stations to show
   const displayedStations = useMemo(() => {
     if (activeMode === 'travel') {
       return [...HIGHWAY_STATIONS, ...LOCAL_STATIONS];
@@ -306,7 +381,7 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
     return LOCAL_STATIONS;
   }, [activeMode]);
 
-  // Find the cheapest station on the current active view/trip
+  // Cheapest station on route/view
   const cheapestStation = useMemo(() => {
     if (displayedStations.length === 0) return null;
     return [...displayedStations].sort((a, b) => a.price - b.price)[0];
@@ -322,7 +397,7 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
 
     const map = L.map(mapContainerRef.current, {
       center: initialCenter,
-      zoom: 13,
+      zoom: 14,
       zoomControl: false,
     });
 
@@ -337,23 +412,6 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
     const markersLayer = L.layerGroup().addTo(map);
     markersLayerRef.current = markersLayer;
 
-    // User location marker
-    const userIcon = L.divIcon({
-      className: 'user-marker-container',
-      html: `
-        <div class="relative flex items-center justify-center w-8 h-8">
-          <div class="absolute w-8 h-8 rounded-full bg-emerald-500/25 animate-pulse-ring"></div>
-          <div class="w-4 h-4 rounded-full bg-emerald-600 border-2 border-white shadow-md"></div>
-        </div>
-      `,
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
-    });
-
-    const userMarker = L.marker(userLocation, { icon: userIcon }).addTo(map);
-    userMarker.bindPopup('<b style="font-family: sans-serif;">Você está aqui (Origem)</b>');
-    userMarkerRef.current = userMarker;
-
     mapInstanceRef.current = map;
 
     return () => {
@@ -362,7 +420,44 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
     };
   }, []);
 
-  // 4. Update station markers on map when displayedStations or selectedStation changes
+  // 4. Update Vehicle / User Marker (with 3D Car Style & Heading Rotation)
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (userMarkerRef.current) {
+      map.removeLayer(userMarkerRef.current);
+    }
+
+    // Vehicle icon with dynamic heading
+    const userVehicleIcon = L.divIcon({
+      className: 'vehicle-marker-wrapper',
+      html: isNavigating ? `
+        <div style="transform: rotate(${carHeading}deg); transition: transform 0.4s ease-out;" class="relative flex items-center justify-center w-12 h-12">
+          <!-- Light Beam Forward -->
+          <div class="absolute -top-4 w-6 h-8 bg-gradient-to-t from-emerald-500/40 to-transparent rounded-t-full blur-xs"></div>
+          <!-- Radar Pulse -->
+          <div class="absolute w-12 h-12 rounded-full bg-emerald-500/20 animate-pulse-ring"></div>
+          <!-- Vehicle / Navigation Arrow 3D -->
+          <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-700 via-emerald-500 to-teal-400 border-2 border-white shadow-xl flex items-center justify-center">
+            <div class="w-0 h-0 border-l-[5px] border-l-transparent border-b-[10px] border-b-white border-r-[5px] border-r-transparent -mt-1"></div>
+          </div>
+        </div>
+      ` : `
+        <div class="relative flex items-center justify-center w-8 h-8">
+          <div class="absolute w-8 h-8 rounded-full bg-emerald-500/25 animate-pulse-ring"></div>
+          <div class="w-4 h-4 rounded-full bg-emerald-600 border-2 border-white shadow-md"></div>
+        </div>
+      `,
+      iconSize: isNavigating ? [48, 48] : [32, 32],
+      iconAnchor: isNavigating ? [24, 24] : [16, 16],
+    });
+
+    const marker = L.marker(userLocation, { icon: userVehicleIcon, zIndexOffset: 1000 }).addTo(map);
+    userMarkerRef.current = marker;
+  }, [userLocation, carHeading, isNavigating]);
+
+  // 5. Update station markers on map
   useEffect(() => {
     const map = mapInstanceRef.current;
     const markersLayer = markersLayerRef.current;
@@ -404,7 +499,7 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
     });
   }, [displayedStations, selectedStation, cheapestStation, activeMode]);
 
-  // 5. Nominatim Geocoding API for Trip Destination Search
+  // 6. Nominatim Geocoding API for Trip Destination Search
   useEffect(() => {
     if (!searchDestinationQuery.trim() || searchDestinationQuery.length < 3) {
       setDestinationResults([]);
@@ -442,7 +537,7 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
     return () => clearTimeout(timer);
   }, [searchDestinationQuery]);
 
-  // 6. Clear route helper
+  // 7. Clear route helper
   const clearRoute = () => {
     if (routingControlRef.current && mapInstanceRef.current) {
       mapInstanceRef.current.removeControl(routingControlRef.current);
@@ -458,8 +553,8 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
     setRouteError(null);
   };
 
-  // 7. Calculate and draw Interstate / Local Route
-  const calculateRouteToPoint = (targetLat: number, targetLng: number, title?: string) => {
+  // 8. Calculate and draw Route
+  const calculateRouteToPoint = (targetLat: number, targetLng: number, title?: string, autoStartNavigation = false) => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
@@ -494,11 +589,11 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
         routeWhileDragging: false,
         addWaypoints: false,
         showAlternatives: false,
-        fitSelectedRoutes: true,
+        fitSelectedRoutes: !autoStartNavigation,
         show: false,
         lineOptions: {
           styles: [
-            { color: '#047857', opacity: 0.9, weight: 6 },
+            { color: '#047857', opacity: 0.9, weight: 7 },
             { color: '#34d399', opacity: 0.8, weight: 3 },
           ],
           extendToWaypoints: true,
@@ -507,17 +602,17 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
         },
       });
 
-      routingControl.on('routesfound', (e: { routes: Array<{ summary: { totalDistance: number; totalTime: number } }> }) => {
+      routingControl.on('routesfound', (e: { routes: Array<{ summary: { totalDistance: number; totalTime: number }; instructions?: Array<{ text: string; distance: number; time: number; type?: string }> }> }) => {
         setIsCalculatingRoute(false);
-        setIsNavigating(true);
         if (e.routes && e.routes[0]) {
-          const summary = e.routes[0].summary;
+          const route = e.routes[0];
+          const summary = route.summary;
           const distKmNum = summary.totalDistance / 1000;
           const distKmStr = distKmNum > 10
             ? Math.round(distKmNum) + ' km'
             : distKmNum.toFixed(1).replace('.', ',') + ' km';
 
-          // Convert seconds to human readable duration
+          // Duration string
           const totalMinutes = Math.round(summary.totalTime / 60);
           let durationStr = `${totalMinutes} min`;
           if (totalMinutes >= 60) {
@@ -531,17 +626,22 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
             durationText: durationStr,
             totalDistanceMeters: summary.totalDistance,
             totalDurationSeconds: summary.totalTime,
+            instructions: route.instructions || [],
           });
 
-          // Fit all route waypoints on map
-          const bounds = L.latLngBounds([startPoint, endPoint]);
-          map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
+          if (autoStartNavigation) {
+            setIsNavigating(true);
+            map.setView(userLocation, 17, { animate: true });
+          } else {
+            const bounds = L.latLngBounds([startPoint, endPoint]);
+            map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
+          }
         }
       });
 
       routingControl.on('routingerror', () => {
         setIsCalculatingRoute(false);
-        setRouteError('Não foi possível calcular o trajeto rodoviário no momento. Tente novamente.');
+        setRouteError('Não foi possível calcular o trajeto. Tente novamente.');
       });
 
       routingControl.addTo(map);
@@ -553,16 +653,13 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
     }
   };
 
-  // Handler: Calculate route to selected station
-  const calculateRouteToStation = () => {
-    if (!selectedStation.lat || !selectedStation.lng) {
-      setRouteError('Coordenadas do posto indisponíveis.');
-      return;
-    }
-    calculateRouteToPoint(selectedStation.lat, selectedStation.lng, selectedStation.name);
+  // Start Guided Navigation Mode (GPS estilo Waze)
+  const startLiveNavigation = () => {
+    if (!selectedStation.lat || !selectedStation.lng) return;
+    calculateRouteToPoint(selectedStation.lat, selectedStation.lng, selectedStation.name, true);
   };
 
-  // Handler: Select a travel destination city
+  // Select a destination city in trip mode
   const handleSelectDestination = (city: DestinationCity) => {
     setSelectedDestination(city);
     setSearchDestinationQuery('');
@@ -573,7 +670,7 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
   // Center map on user
   const handleCenterUser = () => {
     if (mapInstanceRef.current) {
-      mapInstanceRef.current.flyTo(userLocation, 14, { duration: 1 });
+      mapInstanceRef.current.flyTo(userLocation, isNavigating ? 17 : 14, { duration: 1 });
     }
   };
 
@@ -583,6 +680,29 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
       mapInstanceRef.current.flyTo([selectedStation.lat, selectedStation.lng], 14, { duration: 1 });
     }
   };
+
+  // Estimated arrival time (ETA)
+  const etaTime = useMemo(() => {
+    if (!routeInfo) return '';
+    const now = new Date();
+    now.setSeconds(now.getSeconds() + routeInfo.totalDurationSeconds);
+    return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }, [routeInfo]);
+
+  // Next Turn-by-Turn Instruction
+  const nextInstruction = useMemo(() => {
+    if (!routeInfo?.instructions || routeInfo.instructions.length === 0) {
+      return { text: `Siga em frente rumo a ${selectedStation.name}`, distance: 'Direto' };
+    }
+    const first = routeInfo.instructions[0];
+    const distText = first.distance > 1000 
+      ? `${(first.distance / 1000).toFixed(1)} km` 
+      : `${Math.round(first.distance)} m`;
+    return {
+      text: first.text || `Continue em direção a ${selectedStation.name}`,
+      distance: distText
+    };
+  }, [routeInfo, selectedStation]);
 
   // External GPS Launchers
   const openWaze = () => {
@@ -602,329 +722,415 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
   };
 
   return (
-    <div className="relative h-full w-full flex flex-col overflow-hidden bg-gray-100">
-      {/* Top Header Overlay with Mode Switcher & Search */}
-      <div className="absolute top-3 left-3 right-3 z-[500] flex flex-col gap-2">
-        {/* Mode Switcher Pills: Postos Locais vs Modo Viagem */}
-        <div className="bg-white/95 backdrop-blur-md rounded-2xl p-1 shadow-md border border-gray-100 flex items-center gap-1">
-          <button
-            onClick={() => {
-              setActiveMode('local');
-              clearRoute();
-            }}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-              activeMode === 'local'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-            }`}
+    <div className={`relative w-full h-full flex flex-col overflow-hidden bg-gray-950 ${isNavigating ? 'fixed inset-0 z-[1000]' : ''}`}>
+      {/* ─────────────────────────────────────────────────────────────
+          1. NORMAL HEADER OVERLAYS (Hidden when in Live Navigation)
+         ───────────────────────────────────────────────────────────── */}
+      {!isNavigating && (
+        <div className="absolute top-3 left-3 right-3 z-[500] flex flex-col gap-2">
+          {/* Mode Switcher Pills */}
+          <div className="bg-white/95 backdrop-blur-md rounded-2xl p-1 shadow-md border border-gray-100 flex items-center gap-1">
+            <button
+              onClick={() => {
+                setActiveMode('local');
+                clearRoute();
+              }}
+              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                activeMode === 'local'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <Fuel size={14} />
+              <span>Postos Locais</span>
+            </button>
+            <button
+              onClick={() => {
+                setActiveMode('travel');
+                clearRoute();
+              }}
+              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                activeMode === 'travel'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <Compass size={14} />
+              <span>Modo Viagem 🚗</span>
+            </button>
+          </div>
+
+          {/* Search or Trip Destination */}
+          {activeMode === 'local' ? (
+            <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-lg px-4 py-3 flex items-center gap-3 border border-gray-100">
+              <Search size={18} className="text-gray-400" />
+              <input 
+                type="text" 
+                placeholder="Buscar posto ou combustível..." 
+                className="flex-1 bg-transparent outline-none text-gray-800 text-sm placeholder:text-gray-400"
+              />
+              <Mic size={18} className="text-gray-400 cursor-pointer hover:text-emerald-600 transition-colors" />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-lg p-3 border border-gray-100 flex flex-col gap-2">
+                <div className="flex items-center gap-2 text-xs font-medium text-gray-500 px-1">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                  <span className="truncate">Origem: Salvador, BA (Sua localização)</span>
+                </div>
+                <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border border-gray-200">
+                  <MapPin size={16} className="text-red-500 shrink-0" />
+                  <input 
+                    type="text" 
+                    value={searchDestinationQuery}
+                    onChange={(e) => setSearchDestinationQuery(e.target.value)}
+                    placeholder="Para onde você vai? Ex: Aracaju, Feira..." 
+                    className="flex-1 bg-transparent outline-none text-gray-800 text-sm placeholder:text-gray-400"
+                  />
+                  {isSearchingDestinations && (
+                    <div className="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                  )}
+                  {searchDestinationQuery && !isSearchingDestinations && (
+                    <button 
+                      onClick={() => setSearchDestinationQuery('')}
+                      className="p-1 text-gray-400 hover:text-gray-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Autocomplete Dropdown */}
+                {destinationResults.length > 0 && (
+                  <div className="bg-white rounded-xl border border-gray-200 shadow-xl overflow-hidden mt-1 divide-y divide-gray-100 max-h-48 overflow-y-auto">
+                    {destinationResults.map((dest, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => handleSelectDestination(dest)}
+                        className="w-full px-3 py-2.5 text-left text-xs hover:bg-emerald-50 transition-colors flex items-center justify-between group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <MapPin size={13} className="text-gray-400 group-hover:text-emerald-600" />
+                          <span className="font-semibold text-gray-800">{dest.name}</span>
+                          <span className="text-gray-400 text-[11px]">{dest.state}</span>
+                        </div>
+                        <ArrowRight size={13} className="text-gray-300 group-hover:text-emerald-600" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Quick Destination Chips */}
+                {!selectedDestination && destinationResults.length === 0 && (
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1">
+                    <span className="text-[10px] text-gray-400 font-bold uppercase shrink-0">Populares:</span>
+                    {POPULAR_DESTINATIONS.map((dest) => (
+                      <button
+                        key={dest.name}
+                        onClick={() => handleSelectDestination(dest)}
+                        className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 hover:bg-emerald-100 hover:text-emerald-800 text-gray-700 whitespace-nowrap transition-colors flex items-center gap-1"
+                      >
+                        <span>{dest.name}</span>
+                        <span className="text-[10px] opacity-70">({dest.state})</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* "Cheapest Gas Station on Route" Banner Alert */}
+          <AnimatePresence>
+            {activeMode === 'travel' && cheapestStation && (
+              <motion.div
+                initial={{ y: -10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: -10, opacity: 0 }}
+                onClick={() => {
+                  setSelectedStation(cheapestStation);
+                  if (mapInstanceRef.current && cheapestStation.lat && cheapestStation.lng) {
+                    mapInstanceRef.current.flyTo([cheapestStation.lat, cheapestStation.lng], 14);
+                  }
+                }}
+                className="bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-2xl p-3 shadow-xl cursor-pointer active:scale-[0.99] transition-transform border border-amber-400/30 flex items-center justify-between"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                    <Sparkles size={18} className="text-white fill-white" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-black uppercase tracking-wider bg-white text-amber-600 px-1.5 py-0.2 rounded-md">
+                        Melhor Parada
+                      </span>
+                      <span className="text-xs font-extrabold text-white">R$ {cheapestStation.price.toFixed(2).replace('.', ',')}/L</span>
+                    </div>
+                    <p className="text-xs text-amber-50 font-medium line-clamp-1 mt-0.5">
+                      {cheapestStation.name} • {cheapestStation.distance}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 text-xs font-bold bg-white/15 px-2.5 py-1.5 rounded-xl">
+                  <TrendingDown size={14} />
+                  <span>Ver posto</span>
+                </div>
+              </motion.div>
+            )}
+
+            {routeError && (
+              <motion.div
+                initial={{ y: -10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: -10, opacity: 0 }}
+                className="bg-red-50 text-red-700 border border-red-200 rounded-xl p-3 text-xs flex items-center gap-2 shadow-sm"
+              >
+                <AlertCircle size={16} className="shrink-0 text-red-500" />
+                <span>{routeError}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          2. LIVE GUIDED NAVIGATION HUD (Waze / Google Maps Style)
+         ───────────────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {isNavigating && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="pointer-events-none absolute inset-0 z-[600] flex flex-col justify-between p-4"
           >
-            <Fuel size={14} />
-            <span>Postos Locais</span>
+            {/* Top Navigation Banner: Turn-by-Turn Instruction */}
+            <motion.div 
+              initial={{ y: -40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              className="pointer-events-auto bg-emerald-900/95 backdrop-blur-xl border border-emerald-500/30 text-white rounded-3xl p-4 shadow-2xl flex items-center justify-between gap-3"
+            >
+              <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                <div className="w-13 h-13 rounded-2xl bg-emerald-500/30 border border-emerald-400/40 flex items-center justify-center shrink-0 shadow-inner">
+                  {nextInstruction.text.toLowerCase().includes('direita') ? (
+                    <CornerUpRight size={28} className="text-emerald-300" />
+                  ) : nextInstruction.text.toLowerCase().includes('esquerda') ? (
+                    <CornerUpLeft size={28} className="text-emerald-300" />
+                  ) : (
+                    <ArrowUp size={28} className="text-emerald-300" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-emerald-300 bg-emerald-800/80 px-2 py-0.5 rounded-lg">
+                      Em {nextInstruction.distance}
+                    </span>
+                  </div>
+                  <h3 className="text-base font-bold text-white leading-snug truncate mt-0.5">
+                    {nextInstruction.text}
+                  </h3>
+                </div>
+              </div>
+
+              {/* Exit Navigation & Voice Toggle */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => setVoiceAlerts(!voiceAlerts)}
+                  className="w-10 h-10 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-90 transition-all flex items-center justify-center text-emerald-200 hover:text-white"
+                  title="Alertas de voz"
+                >
+                  {voiceAlerts ? <Volume2 size={18} /> : <VolumeX size={18} />}
+                </button>
+                <button
+                  onClick={clearRoute}
+                  className="w-10 h-10 rounded-2xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 active:scale-90 transition-all flex items-center justify-center text-red-200 hover:text-white"
+                  title="Encerrar navegação"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </motion.div>
+
+            {/* Bottom HUD: Live GPS Metrics & Trip Panel */}
+            <motion.div
+              initial={{ y: 50, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              className="pointer-events-auto bg-white/95 backdrop-blur-xl border border-gray-200/80 text-gray-900 rounded-3xl p-5 shadow-2xl flex flex-col gap-3.5"
+            >
+              <div className="flex items-center justify-between">
+                {/* Time & ETA */}
+                <div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-black text-emerald-700 tracking-tight">
+                      {routeInfo ? routeInfo.durationText : 'Calculando...'}
+                    </span>
+                    <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-lg">
+                      Chegada: {etaTime}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-500 font-medium mt-0.5">
+                    <span>{routeInfo ? routeInfo.distanceKm : selectedStation.distance} restante</span>
+                    <span>•</span>
+                    <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                      <ShieldCheck size={13} /> Rota mais econômica
+                    </span>
+                  </div>
+                </div>
+
+                {/* Re-center GPS button */}
+                <button
+                  onClick={handleCenterUser}
+                  className="w-12 h-12 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-200 shadow-sm flex items-center justify-center active:scale-90 transition-transform"
+                  title="Centralizar no veículo"
+                >
+                  <Navigation2 size={20} className="fill-emerald-700 rotate-45" />
+                </button>
+              </div>
+
+              {/* Station Info Pill */}
+              <div className="flex items-center justify-between bg-gray-50 rounded-2xl p-3 border border-gray-100">
+                <div className="flex items-center gap-2.5 truncate">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-white font-bold text-xs shrink-0 ${selectedStation.logoBg}`}>
+                    {selectedStation.logoInitials}
+                  </div>
+                  <div className="truncate">
+                    <p className="text-xs font-bold text-gray-900 truncate leading-tight">{selectedStation.name}</p>
+                    <p className="text-[11px] text-gray-500 truncate">{selectedStation.address}</p>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="text-xs font-extrabold text-emerald-700">R$ {selectedStation.price.toFixed(2).replace('.', ',')}</span>
+                  <p className="text-[9px] text-gray-400 font-medium">Gasolina</p>
+                </div>
+              </div>
+
+              {/* Stop Trip Button */}
+              <Button
+                onClick={clearRoute}
+                variant="danger"
+                className="w-full py-3 text-xs font-bold rounded-2xl gap-2 shadow-md shadow-red-500/20"
+              >
+                <StopCircle size={17} />
+                Encerrar Navegação
+              </Button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─────────────────────────────────────────────────────────────
+          3. FLOATING MAP CONTROLS (Recentering / Reset View)
+         ───────────────────────────────────────────────────────────── */}
+      {!isNavigating && (
+        <div className="absolute right-4 bottom-72 z-[500] flex flex-col gap-2">
+          <button
+            onClick={handleCenterUser}
+            className="w-10 h-10 bg-white rounded-full shadow-lg border border-gray-100 flex items-center justify-center text-gray-700 hover:text-emerald-600 active:scale-90 transition-all"
+            title="Minha localização"
+          >
+            <Crosshair size={18} />
           </button>
           <button
-            onClick={() => {
-              setActiveMode('travel');
-              clearRoute();
-            }}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-              activeMode === 'travel'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-            }`}
+            onClick={handleCenterStation}
+            className="w-10 h-10 bg-white rounded-full shadow-lg border border-gray-100 flex items-center justify-center text-gray-700 hover:text-emerald-600 active:scale-90 transition-all"
+            title="Ver posto selecionado"
           >
-            <Compass size={14} />
-            <span>Modo Viagem 🚗</span>
+            <MapPin size={18} />
           </button>
         </div>
+      )}
 
-        {/* Search Bar or Trip Destination Picker */}
-        {activeMode === 'local' ? (
-          <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-lg px-4 py-3 flex items-center gap-3 border border-gray-100">
-            <Search size={18} className="text-gray-400" />
-            <input 
-              type="text" 
-              placeholder="Buscar posto ou combustível em Salvador..." 
-              className="flex-1 bg-transparent outline-none text-gray-800 text-sm placeholder:text-gray-400"
-            />
-            <Mic size={18} className="text-gray-400 cursor-pointer hover:text-emerald-600 transition-colors" />
-          </div>
-        ) : (
-          /* Trip Mode Destination Search */
-          <div className="flex flex-col gap-2">
-            <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-lg p-3 border border-gray-100 flex flex-col gap-2">
-              <div className="flex items-center gap-2 text-xs font-medium text-gray-500 px-1">
-                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                <span className="truncate">Origem: Salvador, BA (Sua localização)</span>
-              </div>
-              <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border border-gray-200">
-                <MapPin size={16} className="text-red-500 shrink-0" />
-                <input 
-                  type="text" 
-                  value={searchDestinationQuery}
-                  onChange={(e) => setSearchDestinationQuery(e.target.value)}
-                  placeholder="Para onde você vai? Ex: Aracaju, Feira..." 
-                  className="flex-1 bg-transparent outline-none text-gray-800 text-sm placeholder:text-gray-400"
-                />
-                {isSearchingDestinations && (
-                  <div className="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-                )}
-                {searchDestinationQuery && !isSearchingDestinations && (
-                  <button 
-                    onClick={() => setSearchDestinationQuery('')}
-                    className="p-1 text-gray-400 hover:text-gray-600"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-
-              {/* Autocomplete Results Dropdown */}
-              {destinationResults.length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-200 shadow-xl overflow-hidden mt-1 divide-y divide-gray-100 max-h-48 overflow-y-auto">
-                  {destinationResults.map((dest, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => handleSelectDestination(dest)}
-                      className="w-full px-3 py-2.5 text-left text-xs hover:bg-emerald-50 transition-colors flex items-center justify-between group"
-                    >
-                      <div className="flex items-center gap-2">
-                        <MapPin size={13} className="text-gray-400 group-hover:text-emerald-600" />
-                        <span className="font-semibold text-gray-800">{dest.name}</span>
-                        <span className="text-gray-400 text-[11px]">{dest.state}</span>
-                      </div>
-                      <ArrowRight size={13} className="text-gray-300 group-hover:text-emerald-600" />
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Quick Destination Chips */}
-              {!selectedDestination && destinationResults.length === 0 && (
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1">
-                  <span className="text-[10px] text-gray-400 font-bold uppercase shrink-0">Populares:</span>
-                  {POPULAR_DESTINATIONS.map((dest) => (
-                    <button
-                      key={dest.name}
-                      onClick={() => handleSelectDestination(dest)}
-                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 hover:bg-emerald-100 hover:text-emerald-800 text-gray-700 whitespace-nowrap transition-colors flex items-center gap-1"
-                    >
-                      <span>{dest.name}</span>
-                      <span className="text-[10px] opacity-70">({dest.state})</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* "Cheapest Gas Station on Route" Banner Alert */}
-        <AnimatePresence>
-          {activeMode === 'travel' && cheapestStation && (
-            <motion.div
-              initial={{ y: -10, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: -10, opacity: 0 }}
-              onClick={() => {
-                setSelectedStation(cheapestStation);
-                if (mapInstanceRef.current && cheapestStation.lat && cheapestStation.lng) {
-                  mapInstanceRef.current.flyTo([cheapestStation.lat, cheapestStation.lng], 14);
-                }
-              }}
-              className="bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-2xl p-3 shadow-xl cursor-pointer active:scale-[0.99] transition-transform border border-amber-400/30 flex items-center justify-between"
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                  <Sparkles size={18} className="text-white fill-white" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-black uppercase tracking-wider bg-white text-amber-600 px-1.5 py-0.2 rounded-md">
-                      Melhor Parada
-                    </span>
-                    <span className="text-xs font-extrabold text-white">R$ {cheapestStation.price.toFixed(2).replace('.', ',')}/L</span>
-                  </div>
-                  <p className="text-xs text-amber-50 font-medium line-clamp-1 mt-0.5">
-                    {cheapestStation.name} • {cheapestStation.distance}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1 text-xs font-bold bg-white/15 px-2.5 py-1.5 rounded-xl">
-                <TrendingDown size={14} />
-                <span>Ver posto</span>
-              </div>
-            </motion.div>
-          )}
-
-          {/* Real-time Navigation Banner */}
-          {isNavigating && routeInfo && (
-            <motion.div
-              initial={{ y: -15, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: -15, opacity: 0 }}
-              className="bg-emerald-700 text-white rounded-2xl p-3.5 shadow-xl flex items-center justify-between border border-emerald-500/30"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                  <Navigation2 size={20} className="fill-white rotate-45" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-extrabold text-lg leading-tight">{routeInfo.durationText}</span>
-                    <span className="text-xs text-emerald-200 font-medium">({routeInfo.distanceKm})</span>
-                  </div>
-                  <p className="text-xs text-emerald-100 line-clamp-1">
-                    {selectedDestination 
-                      ? `Viagem: Salvador → ${selectedDestination.name} (${selectedDestination.state})`
-                      : `Rota até ${selectedStation.name}`}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={clearRoute}
-                className="p-1.5 rounded-full hover:bg-white/20 active:scale-90 transition-all text-white/80 hover:text-white"
-                title="Fechar rota"
-              >
-                <X size={18} />
-              </button>
-            </motion.div>
-          )}
-
-          {routeError && (
-            <motion.div
-              initial={{ y: -10, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: -10, opacity: 0 }}
-              className="bg-red-50 text-red-700 border border-red-200 rounded-xl p-3 text-xs flex items-center gap-2 shadow-sm"
-            >
-              <AlertCircle size={16} className="shrink-0 text-red-500" />
-              <span>{routeError}</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* Floating Map Controls */}
-      <div className="absolute right-4 bottom-72 z-[500] flex flex-col gap-2">
-        <button
-          onClick={handleCenterUser}
-          className="w-10 h-10 bg-white rounded-full shadow-lg border border-gray-100 flex items-center justify-center text-gray-700 hover:text-emerald-600 active:scale-90 transition-all"
-          title="Minha localização"
-        >
-          <Crosshair size={18} />
-        </button>
-        <button
-          onClick={handleCenterStation}
-          className="w-10 h-10 bg-white rounded-full shadow-lg border border-gray-100 flex items-center justify-center text-gray-700 hover:text-emerald-600 active:scale-90 transition-all"
-          title="Ver posto selecionado"
-        >
-          <MapPin size={18} />
-        </button>
-      </div>
-
-      {/* Leaflet Map Canvas */}
+      {/* ─────────────────────────────────────────────────────────────
+          4. LEAFLET MAP CANVAS
+         ───────────────────────────────────────────────────────────── */}
       <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-      {/* Bottom Sheet Card */}
-      <div className="absolute bottom-4 left-4 right-4 z-[500]">
-        <motion.div
-          initial={{ y: 80, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ type: "spring", stiffness: 260, damping: 22 }}
-        >
-          <Card className="p-4 shadow-2xl border border-gray-100/80 bg-white/95 backdrop-blur-md rounded-3xl">
-            <div className="flex justify-between items-start mb-3">
-              <div className="flex gap-3">
-                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white font-bold text-xs shadow-sm ${selectedStation.logoBg}`}>
-                  {selectedStation.logoInitials}
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-900 text-base leading-tight">{selectedStation.name}</h3>
-                  <div className="flex items-center text-gray-500 text-xs mt-0.5 gap-2">
-                    <span>Gasolina Comum</span>
-                    <span className="flex items-center text-amber-500 gap-0.5 font-semibold">
-                      <Star size={11} className="fill-amber-500" /> 4.5
-                    </span>
+      {/* ─────────────────────────────────────────────────────────────
+          5. BOTTOM SHEET CARD (Preview & Action Card)
+         ───────────────────────────────────────────────────────────── */}
+      {!isNavigating && (
+        <div className="absolute bottom-4 left-4 right-4 z-[500]">
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 260, damping: 22 }}
+          >
+            <Card className="p-4 shadow-2xl border border-gray-100/80 bg-white/95 backdrop-blur-md rounded-3xl">
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex gap-3">
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white font-bold text-xs shadow-sm ${selectedStation.logoBg}`}>
+                    {selectedStation.logoInitials}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-base leading-tight">{selectedStation.name}</h3>
+                    <div className="flex items-center text-gray-500 text-xs mt-0.5 gap-2">
+                      <span>Gasolina Comum</span>
+                      <span className="flex items-center text-amber-500 gap-0.5 font-semibold">
+                        <Star size={11} className="fill-amber-500" /> 4.5
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="text-emerald-600 font-extrabold text-xl leading-tight">
-                  R$ {selectedStation.price.toFixed(2).replace('.', ',')}
+                <div className="text-right">
+                  <div className="text-emerald-600 font-extrabold text-xl leading-tight">
+                    R$ {selectedStation.price.toFixed(2).replace('.', ',')}
+                  </div>
+                  <div className="text-[10px] text-gray-400 font-medium">/litro</div>
                 </div>
-                <div className="text-[10px] text-gray-400 font-medium">/litro</div>
               </div>
-            </div>
 
-            <div className="flex items-center justify-between text-xs text-gray-500 mb-4 bg-gray-50 p-2.5 rounded-xl">
-              <div className="flex items-center gap-1.5 truncate max-w-[200px]">
-                <MapPin size={13} className="text-gray-400 shrink-0" />
-                <span className="truncate">{selectedStation.address}</span>
-              </div>
-              <div className="font-bold text-gray-800 bg-white px-2 py-0.5 rounded-md shadow-xs shrink-0">
-                {routeInfo ? routeInfo.distanceKm : selectedStation.distance}
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex flex-col gap-2">
-              {isNavigating ? (
-                <div className="flex gap-2">
-                  <Button 
-                    onClick={clearRoute} 
-                    variant="outline" 
-                    className="flex-1 text-xs font-semibold py-2.5 rounded-2xl border-gray-300 text-gray-700"
-                  >
-                    Encerrar Trajeto
-                  </Button>
-                  <Button 
-                    onClick={calculateRouteToStation} 
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-2.5 rounded-2xl gap-1.5"
-                  >
-                    <Navigation2 size={15} className="fill-white" />
-                    Recalcular
-                  </Button>
+              <div className="flex items-center justify-between text-xs text-gray-500 mb-4 bg-gray-50 p-2.5 rounded-xl">
+                <div className="flex items-center gap-1.5 truncate max-w-[200px]">
+                  <MapPin size={13} className="text-gray-400 shrink-0" />
+                  <span className="truncate">{selectedStation.address}</span>
                 </div>
-              ) : (
+                <div className="font-bold text-gray-800 bg-white px-2 py-0.5 rounded-md shadow-xs shrink-0">
+                  {routeInfo ? routeInfo.distanceKm : selectedStation.distance}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col gap-2">
+                {/* Live Navigation CTA Button */}
                 <Button 
-                  onClick={calculateRouteToStation} 
+                  onClick={startLiveNavigation} 
                   disabled={isCalculatingRoute}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2 text-sm font-bold py-3 rounded-2xl shadow-lg shadow-emerald-600/20 active:scale-[0.98] transition-all"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2.5 text-sm font-bold py-3.5 rounded-2xl shadow-lg shadow-emerald-600/25 active:scale-[0.98] transition-all"
                 >
-                  <Car size={18} />
-                  {isCalculatingRoute ? 'Calculando trajeto rodoviário...' : 'Traçar rota até este posto (Zelo)'}
+                  <Navigation2 size={19} className="fill-white rotate-45" />
+                  {isCalculatingRoute ? 'Iniciando GPS...' : 'Iniciar Navegação Guiada (GPS Zelo)'}
                 </Button>
-              )}
 
-              <div className="grid grid-cols-2 gap-2 mt-1">
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <button
+                    onClick={openWaze}
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 border border-gray-200 hover:border-gray-300 text-gray-600 rounded-xl text-xs font-medium hover:bg-gray-50 active:scale-95 transition-all"
+                  >
+                    <Navigation2 size={13} />
+                    <span>Waze</span>
+                  </button>
+                  <button
+                    onClick={openGoogleMaps}
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 border border-gray-200 hover:border-gray-300 text-gray-600 rounded-xl text-xs font-medium hover:bg-gray-50 active:scale-95 transition-all"
+                  >
+                    <MapPin size={13} />
+                    <span>Google Maps</span>
+                  </button>
+                </div>
+
+                {/* Report / Confirm price */}
                 <button
-                  onClick={openWaze}
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 border border-gray-200 hover:border-gray-300 text-gray-600 rounded-xl text-xs font-medium hover:bg-gray-50 active:scale-95 transition-all"
+                  onClick={() => setReportOpen(true)}
+                  className="w-full flex items-center justify-center gap-1.5 text-gray-500 hover:text-amber-600 text-xs font-medium py-2 rounded-xl transition-colors"
                 >
-                  <Navigation2 size={13} />
-                  <span>Waze</span>
-                </button>
-                <button
-                  onClick={openGoogleMaps}
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 border border-gray-200 hover:border-gray-300 text-gray-600 rounded-xl text-xs font-medium hover:bg-gray-50 active:scale-95 transition-all"
-                >
-                  <MapPin size={13} />
-                  <span>Google Maps</span>
+                  <MessageSquare size={13} />
+                  <span>Confirmar ou reportar preço</span>
                 </button>
               </div>
-
-              {/* Report / Confirm price */}
-              <button
-                onClick={() => setReportOpen(true)}
-                className="w-full flex items-center justify-center gap-1.5 text-gray-500 hover:text-amber-600 text-xs font-medium py-2 rounded-xl transition-colors"
-              >
-                <MessageSquare size={13} />
-                <span>Confirmar ou reportar preço</span>
-              </button>
-            </div>
-          </Card>
-        </motion.div>
-      </div>
+            </Card>
+          </motion.div>
+        </div>
+      )}
 
       {/* Price Report Modal */}
       <PriceReportModal
@@ -935,5 +1141,6 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
     </div>
   );
 }
+
 
 
