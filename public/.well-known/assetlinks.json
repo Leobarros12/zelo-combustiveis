@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.zelo.app",
+      "sha256_cert_fingerprints": [
+        "CE:BA:CB:24:00:E5:37:40:61:12:4A:6A:BF:01:CE:77:AC:82:68:F9:C9:1B:8A:C5:85:59:DA:7E:D9:E8:27:6B"
+      ]
+    }
+  }
+]
