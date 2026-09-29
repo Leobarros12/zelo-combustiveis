@@ -62,4 +62,36 @@
   .pb-safe {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
+
+  /* Leaflet & Routing Custom Styling */
+  .leaflet-routing-container {
+    display: none !important;
+  }
+
+  .leaflet-pane {
+    z-index: 10 !important;
+  }
+
+  .leaflet-top, .leaflet-bottom {
+    z-index: 15 !important;
+  }
+
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(0.95);
+      opacity: 0.8;
+    }
+    50% {
+      transform: scale(1.4);
+      opacity: 0.2;
+    }
+    100% {
+      transform: scale(0.95);
+      opacity: 0.8;
+    }
+  }
+
+  .animate-pulse-ring {
+    animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
 }

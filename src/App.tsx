@@ -23,6 +23,8 @@ export type Station = {
   updated: string;
   logoBg: string;
   logoInitials: string;
+  lat?: number;
+  lng?: number;
 };
 
 function App() {

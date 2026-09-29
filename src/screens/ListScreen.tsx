@@ -10,7 +10,7 @@ interface ListScreenProps {
   navigateTo: (screen: ScreenState) => void;
   onSelectStation: (station: Station) => void;
 }
-const STATIONS = [
+const STATIONS: Station[] = [
   {
     id: 1,
     name: 'Posto Shell Pituba',
@@ -19,17 +19,21 @@ const STATIONS = [
     address: 'Av. Manoel Dias da Silva, 1420 - Pituba',
     updated: 'Atualizado há 10 min',
     logoBg: 'bg-yellow-400',
-    logoInitials: 'SH'
+    logoInitials: 'SH',
+    lat: -13.0038,
+    lng: -38.4608
   },
   {
     id: 2,
-    name: 'Posto Ipiranga Ce...',
+    name: 'Posto Ipiranga Centro',
     price: 5.52,
     distance: '2,5 km',
     address: 'Av. Sete de Setembro, 880 - Centro',
     updated: 'Atualizado há 14 min',
     logoBg: 'bg-blue-500',
-    logoInitials: 'IP'
+    logoInitials: 'IP',
+    lat: -12.9835,
+    lng: -38.5135
   },
   {
     id: 3,
@@ -39,7 +43,9 @@ const STATIONS = [
     address: 'Av. Oceânica, 422 - Barra',
     updated: 'Atualizado há 25 min',
     logoBg: 'bg-green-500',
-    logoInitials: 'BR'
+    logoInitials: 'BR',
+    lat: -13.0094,
+    lng: -38.5284
   },
   {
     id: 4,
@@ -49,7 +55,9 @@ const STATIONS = [
     address: 'Rua Dorival Caymmi, 310 - Itapuã',
     updated: 'Atualizado há 40 min',
     logoBg: 'bg-red-500',
-    logoInitials: 'AL'
+    logoInitials: 'AL',
+    lat: -12.9348,
+    lng: -38.3615
   }
 ];
 
