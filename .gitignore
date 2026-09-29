@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Android / TWA builds
+.gradle/
+build/
+app/build/
+*.apk
+*.aab
+*.idsig
+*.keystore
+manifest-checksum.txt
+

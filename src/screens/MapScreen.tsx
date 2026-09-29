@@ -401,10 +401,9 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
       zoomControl: false,
     });
 
-    // Clean and modern CartoDB Voyager tiles
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-      subdomains: 'abcd',
+    // Free official OpenStreetMap tile layer
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       maxZoom: 19,
     }).addTo(map);
 
@@ -722,7 +721,7 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
   };
 
   return (
-    <div className={`relative w-full h-full flex flex-col overflow-hidden bg-gray-950 ${isNavigating ? 'fixed inset-0 z-[1000]' : ''}`}>
+    <div className={`relative w-full min-w-full w-screen h-full flex flex-col overflow-hidden bg-gray-50 ${isNavigating ? 'fixed inset-0 z-[1000]' : ''}`}>
       {/* ─────────────────────────────────────────────────────────────
           1. NORMAL HEADER OVERLAYS (Hidden when in Live Navigation)
          ───────────────────────────────────────────────────────────── */}
@@ -1043,7 +1042,7 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
       {/* ─────────────────────────────────────────────────────────────
           4. LEAFLET MAP CANVAS
          ───────────────────────────────────────────────────────────── */}
-      <div ref={mapContainerRef} className="w-full h-full z-0" />
+      <div ref={mapContainerRef} className="w-full min-w-full w-screen h-full z-0" />
 
       {/* ─────────────────────────────────────────────────────────────
           5. BOTTOM SHEET CARD (Preview & Action Card)

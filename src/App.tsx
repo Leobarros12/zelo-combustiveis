@@ -86,13 +86,10 @@ function App() {
   };
 
   return (
-    <div className="bg-gray-900 min-h-screen w-full flex items-center justify-center font-sans antialiased selection:bg-brand-500 selection:text-white">
-      {/* Mobile Responsive Container */}
-      <div className="w-full max-w-md min-h-screen h-[100dvh] bg-gray-50 relative md:rounded-[36px] md:shadow-2xl md:border md:border-gray-800/20 overflow-hidden flex flex-col">
-        <AnimatePresence mode="wait">
-          {renderScreen()}
-        </AnimatePresence>
-      </div>
+    <div className="w-full min-w-full w-screen min-h-screen h-[100dvh] bg-gray-50 relative overflow-hidden flex flex-col font-sans antialiased selection:bg-brand-500 selection:text-white">
+      <AnimatePresence mode="wait">
+        {renderScreen()}
+      </AnimatePresence>
     </div>
   );
 }
