@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Search, 
-  Mic, 
-  Navigation2, 
-  Star, 
-  MapPin, 
-  MessageSquare, 
-  Crosshair, 
-  X, 
+import {
+  Search,
+  Mic,
+  Navigation2,
+  Star,
+  MapPin,
+  MessageSquare,
+  Crosshair,
+  X,
   AlertCircle,
   Compass,
   Sparkles,
@@ -29,6 +29,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { PriceReportModal } from '../components/ui/PriceReportModal';
 import type { Station } from '../App';
+import { getStationPrices } from '../services/fuelService';
 
 // Fix Leaflet marker icons in bundlers
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
@@ -323,7 +324,7 @@ export function MapScreen({ station: initialStation, onNavigatingChange }: MapSc
         watchIdRef.current = navigator.geolocation.watchPosition(
           (position) => {
             const newCoords: [number, number] = [position.coords.latitude, position.coords.longitude];
-            
+
             // Calculate dynamic heading if not provided by device sensor
             let heading = position.coords.heading;
             if (heading === null || isNaN(heading)) {
@@ -481,8 +482,8 @@ export function MapScreen({ station: initialStation, onNavigatingChange }: MapSc
       const pinColor = isCheapest
         ? 'bg-amber-500 ring-2 ring-amber-300'
         : isSelected
-        ? 'bg-emerald-700 ring-2 ring-emerald-400'
-        : 'bg-emerald-600';
+          ? 'bg-emerald-700 ring-2 ring-emerald-400'
+          : 'bg-emerald-600';
 
       const pinIcon = L.divIcon({
         className: `station-pin-${st.id}`,
@@ -502,6 +503,15 @@ export function MapScreen({ station: initialStation, onNavigatingChange }: MapSc
       const marker = L.marker([st.lat, st.lng], { icon: pinIcon }).addTo(markersLayer);
       marker.on('click', () => {
         setSelectedStation(st);
+
+        // Converter o id para string resolve o erro de TypeScript
+        getStationPrices(st.id.toString(), st.lat, st.lng)
+          .then((prices) => {
+            console.log('[Zelo Supabase] Dados sincronizados com sucesso:', prices);
+          })
+          .catch((err) => {
+            console.error('[Zelo Supabase Error]', err);
+          });
       });
     });
   }, [displayedStations, selectedStation, cheapestStation, activeMode]);
@@ -520,7 +530,7 @@ export function MapScreen({ station: initialStation, onNavigatingChange }: MapSc
         const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchDestinationQuery)}&countrycodes=br&limit=6&addressdetails=1`;
         const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR,pt;q=0.9' } });
         const data = await res.json();
-        
+
         if (Array.isArray(data)) {
           const formatted: DestinationCity[] = data.map((item: { display_name: string; address?: { state?: string; city?: string; town?: string }; lat: string; lon: string }) => {
             const cityName = item.address?.city || item.address?.town || item.display_name.split(',')[0];
@@ -702,8 +712,8 @@ export function MapScreen({ station: initialStation, onNavigatingChange }: MapSc
       return { text: `Siga em frente rumo a ${selectedStation.name}`, distance: 'Direto' };
     }
     const first = routeInfo.instructions[0];
-    const distText = first.distance > 1000 
-      ? `${(first.distance / 1000).toFixed(1)} km` 
+    const distText = first.distance > 1000
+      ? `${(first.distance / 1000).toFixed(1)} km`
       : `${Math.round(first.distance)} m`;
     return {
       text: first.text || `Continue em direção a ${selectedStation.name}`,
@@ -742,11 +752,10 @@ export function MapScreen({ station: initialStation, onNavigatingChange }: MapSc
                 setActiveMode('local');
                 clearRoute();
               }}
-              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                activeMode === 'local'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-              }`}
+              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${activeMode === 'local'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
             >
               <Fuel size={14} />
               <span>Postos Locais</span>
@@ -756,11 +765,10 @@ export function MapScreen({ station: initialStation, onNavigatingChange }: MapSc
                 setActiveMode('travel');
                 clearRoute();
               }}
-              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                activeMode === 'travel'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-              }`}
+              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${activeMode === 'travel'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
             >
               <Compass size={14} />
               <span>Modo Viagem 🚗</span>
@@ -771,9 +779,9 @@ export function MapScreen({ station: initialStation, onNavigatingChange }: MapSc
           {activeMode === 'local' ? (
             <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-lg px-4 py-3 flex items-center gap-3 border border-gray-100">
               <Search size={18} className="text-gray-400" />
-              <input 
-                type="text" 
-                placeholder="Buscar posto ou combustível..." 
+              <input
+                type="text"
+                placeholder="Buscar posto ou combustível..."
                 className="flex-1 bg-transparent outline-none text-gray-800 text-sm placeholder:text-gray-400"
               />
               <Mic size={18} className="text-gray-400 cursor-pointer hover:text-emerald-600 transition-colors" />
@@ -787,18 +795,18 @@ export function MapScreen({ station: initialStation, onNavigatingChange }: MapSc
                 </div>
                 <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border border-gray-200">
                   <MapPin size={16} className="text-red-500 shrink-0" />
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={searchDestinationQuery}
                     onChange={(e) => setSearchDestinationQuery(e.target.value)}
-                    placeholder="Para onde você vai? Ex: Aracaju, Feira..." 
+                    placeholder="Para onde você vai? Ex: Aracaju, Feira..."
                     className="flex-1 bg-transparent outline-none text-gray-800 text-sm placeholder:text-gray-400"
                   />
                   {isSearchingDestinations && (
                     <div className="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
                   )}
                   {searchDestinationQuery && !isSearchingDestinations && (
-                    <button 
+                    <button
                       onClick={() => setSearchDestinationQuery('')}
                       className="p-1 text-gray-400 hover:text-gray-600"
                     >
@@ -912,7 +920,7 @@ export function MapScreen({ station: initialStation, onNavigatingChange }: MapSc
             className="pointer-events-none absolute inset-0 z-[600] flex flex-col justify-between p-4"
           >
             {/* Top Navigation Banner: Turn-by-Turn Instruction */}
-            <motion.div 
+            <motion.div
               initial={{ y: -40, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               className="pointer-events-auto bg-emerald-900/95 backdrop-blur-xl border border-emerald-500/30 text-white rounded-3xl p-4 shadow-2xl flex items-center justify-between gap-3"
@@ -1099,8 +1107,8 @@ export function MapScreen({ station: initialStation, onNavigatingChange }: MapSc
               {/* Action Buttons */}
               <div className="flex flex-col gap-2">
                 {/* Live Navigation CTA Button */}
-                <Button 
-                  onClick={startLiveNavigation} 
+                <Button
+                  onClick={startLiveNavigation}
                   disabled={isCalculatingRoute}
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2.5 text-sm font-bold py-3.5 rounded-2xl shadow-lg shadow-emerald-600/25 active:scale-[0.98] transition-all"
                 >
