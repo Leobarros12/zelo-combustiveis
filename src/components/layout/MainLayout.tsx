@@ -8,9 +8,11 @@ interface MainLayoutProps {
   children: ReactNode;
   currentScreen: ScreenState;
   navigateTo: (screen: ScreenState) => void;
+  /** When true, hides the TopHeader and BottomNav (e.g., during GPS navigation) */
+  hideChrome?: boolean;
 }
 
-export function MainLayout({ children, currentScreen, navigateTo }: MainLayoutProps) {
+export function MainLayout({ children, currentScreen, navigateTo, hideChrome = false }: MainLayoutProps) {
   return (
     <motion.div 
       initial={{ opacity: 0, x: 20 }}
@@ -18,11 +20,11 @@ export function MainLayout({ children, currentScreen, navigateTo }: MainLayoutPr
       exit={{ opacity: 0, x: -20 }}
       className="flex flex-col h-full w-full"
     >
-      <TopHeader />
-      <main className="flex-1 overflow-y-auto pb-28 no-scrollbar relative">
+      {!hideChrome && <TopHeader />}
+      <main className={`flex-1 overflow-y-auto no-scrollbar relative ${hideChrome ? '' : 'pb-28'}`}>
         {children}
       </main>
-      <BottomNav currentScreen={currentScreen} navigateTo={navigateTo} />
+      {!hideChrome && <BottomNav currentScreen={currentScreen} navigateTo={navigateTo} />}
     </motion.div>
   );
 }

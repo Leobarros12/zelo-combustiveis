@@ -40,6 +40,8 @@ L.Icon.Default.mergeOptions({
 
 interface MapScreenProps {
   station: Station | null;
+  /** Callback so parent (App) knows when navigation mode changes */
+  onNavigatingChange?: (navigating: boolean) => void;
 }
 
 interface RouteInfo {
@@ -266,12 +268,18 @@ function calculateBearing(startLat: number, startLng: number, destLat: number, d
   return (brng + 360) % 360;
 }
 
-export function MapScreen({ station: initialStation }: MapScreenProps) {
+export function MapScreen({ station: initialStation, onNavigatingChange }: MapScreenProps) {
   // Mode state: 'local' (postos na cidade) vs 'travel' (Modo Viagem Interestadual)
   const [activeMode, setActiveMode] = useState<'local' | 'travel'>('local');
 
   // Active Guided Navigation Mode (GPS Turn-by-Turn estilo Waze)
   const [isNavigating, setIsNavigating] = useState(false);
+
+  // Sync navigation state with parent
+  const setNavigating = (value: boolean) => {
+    setIsNavigating(value);
+    onNavigatingChange?.(value);
+  };
   const [carHeading, setCarHeading] = useState<number>(0);
   const [voiceAlerts, setVoiceAlerts] = useState(true);
 
@@ -547,7 +555,7 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
       destinationMarkerRef.current = null;
     }
     setRouteInfo(null);
-    setIsNavigating(false);
+    setNavigating(false);
     setSelectedDestination(null);
     setRouteError(null);
   };
@@ -629,7 +637,7 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
           });
 
           if (autoStartNavigation) {
-            setIsNavigating(true);
+            setNavigating(true);
             map.setView(userLocation, 17, { animate: true });
           } else {
             const bounds = L.latLngBounds([startPoint, endPoint]);
@@ -721,7 +729,7 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
   };
 
   return (
-    <div className={`relative w-full min-w-full w-screen h-full flex flex-col overflow-hidden bg-gray-50 ${isNavigating ? 'fixed inset-0 z-[1000]' : ''}`}>
+    <div className={`relative w-full min-w-full h-full flex flex-col overflow-hidden bg-gray-50 ${isNavigating ? 'fixed inset-0 z-[1000]' : ''}`}>
       {/* ─────────────────────────────────────────────────────────────
           1. NORMAL HEADER OVERLAYS (Hidden when in Live Navigation)
          ───────────────────────────────────────────────────────────── */}
@@ -1056,13 +1064,13 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
           >
             <Card className="p-4 shadow-2xl border border-gray-100/80 bg-white/95 backdrop-blur-md rounded-3xl">
               <div className="flex justify-between items-start mb-3">
-                <div className="flex gap-3">
-                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white font-bold text-xs shadow-sm ${selectedStation.logoBg}`}>
+                <div className="flex gap-3 min-w-0 flex-1">
+                  <div className={`w-10 h-10 min-w-[2.5rem] rounded-2xl flex items-center justify-center text-white font-bold text-xs shadow-sm ${selectedStation.logoBg}`}>
                     {selectedStation.logoInitials}
                   </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900 text-base leading-tight">{selectedStation.name}</h3>
-                    <div className="flex items-center text-gray-500 text-xs mt-0.5 gap-2">
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-gray-900 text-base leading-tight break-words">{selectedStation.name}</h3>
+                    <div className="flex items-center flex-wrap text-gray-500 text-xs mt-0.5 gap-2">
                       <span>Gasolina Comum</span>
                       <span className="flex items-center text-amber-500 gap-0.5 font-semibold">
                         <Star size={11} className="fill-amber-500" /> 4.5
@@ -1078,10 +1086,10 @@ export function MapScreen({ station: initialStation }: MapScreenProps) {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-xs text-gray-500 mb-4 bg-gray-50 p-2.5 rounded-xl">
-                <div className="flex items-center gap-1.5 truncate max-w-[200px]">
+              <div className="flex items-center justify-between text-xs text-gray-500 mb-4 bg-gray-50 p-2.5 rounded-xl flex-wrap gap-1">
+                <div className="flex items-center gap-1.5 min-w-0 flex-1">
                   <MapPin size={13} className="text-gray-400 shrink-0" />
-                  <span className="truncate">{selectedStation.address}</span>
+                  <span className="truncate break-words leading-tight">{selectedStation.address}</span>
                 </div>
                 <div className="font-bold text-gray-800 bg-white px-2 py-0.5 rounded-md shadow-xs shrink-0">
                   {routeInfo ? routeInfo.distanceKm : selectedStation.distance}

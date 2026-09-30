@@ -32,4 +32,6 @@ app/build/
 *.idsig
 *.keystore
 manifest-checksum.txt
+.env
+.env.local
 

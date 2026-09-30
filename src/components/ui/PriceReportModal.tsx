@@ -46,14 +46,14 @@ export function PriceReportModal({ isOpen, onClose, station }: PriceReportModalP
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-4">
           {/* Dark Backdrop / Overlay */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={handleClose}
-            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs"
           />
 
           {/* Centered Modal Card */}
@@ -63,8 +63,9 @@ export function PriceReportModal({ isOpen, onClose, station }: PriceReportModalP
             exit={{ scale: 0.92, opacity: 0, y: 15 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6 relative z-10 overflow-hidden border border-gray-100"
+            className="w-full max-w-sm bg-white rounded-3xl shadow-2xl relative z-[80] overflow-hidden border border-gray-100 max-h-[85vh] flex flex-col"
           >
+            <div className="overflow-y-auto flex-1 p-6">
             {/* Header */}
             <div className="flex justify-between items-start mb-4">
               <div>
@@ -198,6 +199,7 @@ export function PriceReportModal({ isOpen, onClose, station }: PriceReportModalP
                 </motion.div>
               )}
             </AnimatePresence>
+            </div>
           </motion.div>
         </div>
       )}

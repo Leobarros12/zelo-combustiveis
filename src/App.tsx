@@ -31,6 +31,7 @@ function App() {
   const [currentScreen, setCurrentScreen] = useState<ScreenState>('welcome');
   const [selectedStation, setSelectedStation] = useState<Station | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   const navigateTo = (screen: ScreenState) => {
     setCurrentScreen(screen);
@@ -70,8 +71,8 @@ function App() {
         );
       case 'map':
         return (
-          <MainLayout currentScreen={currentScreen} navigateTo={navigateTo} key="main">
-            <MapScreen station={selectedStation} />
+          <MainLayout currentScreen={currentScreen} navigateTo={navigateTo} key="main" hideChrome={isNavigating}>
+            <MapScreen station={selectedStation} onNavigatingChange={setIsNavigating} />
           </MainLayout>
         );
       case 'profile':
